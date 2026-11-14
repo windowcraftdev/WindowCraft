@@ -24,10 +24,7 @@ use windowcraft_engine::error::Result as EngineResult;
 use windowcraft_engine::fixes;
 use windowcraft_engine::gaming::{self, InterruptPriority, PciDevice, TimerResolution};
 use windowcraft_engine::jobs::{self, CancelToken, JobContext, JobEvent, JobFailure, LogRing};
-use windowcraft_engine::metadata;
-use windowcraft_engine::convert;
-use windowcraft_engine::tools::{self, Extension};
-use windowcraft_engine::youtube::{self, Format, Stage};
+use windowcraft_engine::extensions::{self, Installed, Listing};
 use windowcraft_engine::packages::{self, InstalledProgram, PackageManager};
 use windowcraft_engine::snapshot::{ChangeRecord, Session};
 use windowcraft_engine::sysinfo::{self, SystemInfo};
@@ -368,19 +365,13 @@ pub enum Message {
     IsoDisks(Vec<DiskFacts>),
     IsoWriteUsb(u32),
     // Extensions
-    InstallExtension(Extension),
-    UninstallExtension(Extension),
-    StripPick,
-    StripPicked(Vec<PathBuf>),
-    VideoUrl(String),
-    VideoFormat(Format),
-    VideoFolder(String),
-    VideoBrowseFolder,
-    VideoFolderPicked(Option<PathBuf>),
-    VideoDownload,
-    ConvertTarget(convert::Target),
-    ConvertPick,
-    ConvertPicked(Vec<PathBuf>),
+    FetchExtensions,
+    ExtensionsFetched(Result<Vec<Listing>, String>),
+    InstallExtension(String),
+    UninstallExtension(String),
+    /// Opens the file picker of an installed extension.
+    RunExtension(String),
+    ExtensionFilesPicked(String, Vec<PathBuf>),
     // Time Machine
     /// None keeps what is shown, because the read failed.
     Refreshed(Option<Vec<Session>>, Option<Vec<Drift>>),
@@ -451,6 +442,12 @@ pub enum JobKind {
     #[default]
     Other,
     OpenIso,
+    /// Installs, updates or removes an extension; the installed list is read
+    /// again when it ends.
+    ExtensionChange,
+    /// Runs an extension on the user's files. It stays out of windowcraft.log,
+    /// because its steps and summary name those files.
+    ExtensionRun,
 }
 
 pub struct ActiveJob {
@@ -467,9 +464,6 @@ pub struct ActiveJob {
     /// successful job counts as having finished everything it was sent.
     pub done: Option<Arc<std::sync::Mutex<Vec<String>>>>,
     pub kind: JobKind,
-    /// Keeps the job out of windowcraft.log, because its steps and summary
-    /// name the user's files or the video.
-    pub private: bool,
 }
 
 pub struct IsoState {
@@ -485,28 +479,16 @@ pub struct IsoState {
     pub disks: Vec<DiskFacts>,
 }
 
-pub struct ExtensionsState {
-    pub url: String,
-    pub format: Format,
-    pub folder: String,
-    pub target: convert::Target,
-    /// Read when the page opens and after each job, not on every frame.
-    pub installed: Vec<Extension>,
-    /// ffmpeg is there, from the additional formats or the YouTube downloader.
-    pub ffmpeg: bool,
-}
-
-impl ExtensionsState {
-    pub fn has(&self, extension: Extension) -> bool {
-        self.installed.contains(&extension)
-    }
-}
-
-pub fn format_index(format: Format) -> f64 {
-    match format {
-        Format::Mp4 => 0.0,
-        Format::Mp3 => 1.0,
-    }
+/// The list of extensions from the WindowCraftExtensions repository. It is
+/// fetched only when the user asks for it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ExtensionList {
+    #[default]
+    NotFetched,
+    Fetching,
+    Fetched(Vec<Listing>),
+    /// A sentence for the user.
+    Failed(String),
 }
 
 pub struct App {
@@ -556,7 +538,9 @@ pub struct App {
     pub fix_modes: BTreeMap<String, String>,
     pub update_mode: String,
     pub iso: IsoState,
-    pub extensions: ExtensionsState,
+    pub extensions: ExtensionList,
+    /// Read when the Extensions page opens and after each install or removal.
+    pub installed_extensions: Vec<Installed>,
     // Time Machine
     pub sessions: Vec<Session>,
     pub drift: Vec<Drift>,
@@ -600,47 +584,6 @@ pub struct App {
     clean_plan: Option<CleanScope>,
 }
 
-fn file_name(path: &std::path::Path) -> String {
-    path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())
-}
-
-/// Progress share and localized step line while a tool is fetched.
-fn tool_step(lang: Language, stage: tools::Stage) -> (f32, String) {
-    match stage {
-        tools::Stage::Fetching(tool, received, Some(total)) if total > 0 => (
-            received as f32 / total as f32,
-            i18n::format_3(t(lang, Msg::StepFetchingTool), tool.name(), &(received >> 20).to_string(), &(total >> 20).to_string()),
-        ),
-        tools::Stage::Fetching(tool, received, _) => {
-            (0.0, format_2(t(lang, Msg::StepFetchingToolNoTotal), tool.name(), &(received >> 20).to_string()))
-        }
-        tools::Stage::Unpacking(tool) => (1.0, format_1(t(lang, Msg::StepUnpackingTool), tool.name())),
-        tools::Stage::Retrying(tool, attempt) => (0.0, format_2(t(lang, Msg::StepRetrying), tool.name(), &attempt.to_string())),
-    }
-}
-
-/// Progress share and localized step line for a downloader stage.
-fn stage_step(lang: Language, stage: Stage) -> (f32, String) {
-    match stage {
-        Stage::Tools(stage) => tool_step(lang, stage),
-        Stage::Downloading(fraction, part) => (
-            fraction,
-            format_2(t(lang, Msg::StepDownloadingPart), &part.to_string(), &format!("{:.0}", fraction * 100.0)),
-        ),
-        Stage::Converting => (1.0, t(lang, Msg::StepConverting).to_owned()),
-        Stage::Cleaning => (1.0, t(lang, Msg::StepCleaningMetadata).to_owned()),
-    }
-}
-
-pub fn extension_name(lang: Language, extension: Extension) -> &'static str {
-    match extension {
-        Extension::Stripper => t(lang, Msg::MiscStripperGroup),
-        Extension::Converter => t(lang, Msg::ConverterGroup),
-        Extension::Ffmpeg => t(lang, Msg::FfmpegGroup),
-        Extension::YouTube => t(lang, Msg::MiscDownloaderGroup),
-    }
-}
-
 /// Turns a network failure into a sentence about GitHub. The reqwest text
 /// names the status in brackets, for example "(504 Gateway Timeout)".
 fn readable(lang: Language, error: EngineError) -> EngineError {
@@ -658,74 +601,27 @@ fn readable(lang: Language, error: EngineError) -> EngineError {
     }
 }
 
-/// Converts each file next to itself. Fails only when no file could be converted.
-fn convert_files(lang: Language, files: &[PathBuf], target: convert::Target, context: &JobContext) -> EngineResult<String> {
-    // WindowCraft converts what it can itself; ffmpeg, when installed, does the rest.
-    let tools = tools::Tools::in_dir(&tools::tools_dir());
-    let ffmpeg = tools.has(tools::Tool::Ffmpeg).then_some(&tools);
-    let mut saved: Vec<PathBuf> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    let count = files.len() as f32;
-    for (index, file) in files.iter().enumerate() {
-        context.cancel.check()?;
-        let step = format!("{} / {}: {}", index + 1, files.len(), file_name(file));
-        context.progress(index as f32 / count, step.clone());
-        let result = convert::convert_file(ffmpeg, file, target, &context.cancel, |share| {
-            context.progress((index as f32 + share) / count, step.clone());
-        });
-        match result {
-            Ok(output) => saved.push(output),
-            Err(EngineError::Cancelled) => return Err(EngineError::Cancelled),
-            Err(error) => {
-                let reason = match &error {
-                    EngineError::Invalid(kind) if kind == "NoPicture" => t(lang, Msg::ConvertNoPicture).to_owned(),
-                    EngineError::Invalid(kind) if kind == "NoVideo" => t(lang, Msg::ConvertNoVideo).to_owned(),
-                    EngineError::Invalid(kind) if kind == "NoAudio" => t(lang, Msg::ConvertNoAudio).to_owned(),
-                    EngineError::Unsupported(_) => t(lang, Msg::ConvertUnreadable).to_owned(),
-                    EngineError::NotFound(what) if what == "ffmpeg" => t(lang, Msg::ConvertNeedsFfmpeg).to_owned(),
-                    other => other.to_string(),
-                };
-                failed.push(format!("{}: {reason}", file_name(file)));
-            }
-        }
+/// Progress share and step line while an extension downloads.
+fn install_step(lang: Language, stage: extensions::Stage) -> (f32, String) {
+    let megabytes = |bytes: u64| format!("{:.1}", bytes as f64 / 1_048_576.0);
+    match stage {
+        extensions::Stage::Fetching(received, Some(total)) if total > 0 => (
+            received as f32 / total as f32,
+            format_2(t(lang, Msg::StepDownloadingExtension), &megabytes(received), &megabytes(total)),
+        ),
+        extensions::Stage::Fetching(received, _) => (0.0, format_1(t(lang, Msg::StepDownloadingExtensionNoTotal), &megabytes(received))),
+        extensions::Stage::Retrying(attempt) => (0.0, format_1(t(lang, Msg::StepRetrying), &attempt.to_string())),
     }
-    let Some(first) = saved.first() else {
-        return Err(EngineError::Message(failed.first().cloned().unwrap_or_default()));
-    };
-    let mut summary = format_2(t(lang, Msg::NoticeConverted), &saved.len().to_string(), &file_name(first));
-    if let Some(error) = failed.first() {
-        summary.push(' ');
-        summary.push_str(&format_2(t(lang, Msg::NoticeFailures), &failed.len().to_string(), error));
-    }
-    Ok(summary)
 }
 
-/// Writes a clean copy of each file. Fails only when no file could be cleaned.
-fn strip_files(lang: Language, files: &[PathBuf], context: &JobContext) -> EngineResult<String> {
-    let ffmpeg = tools::installed_ffmpeg();
-    let mut saved: Vec<PathBuf> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    for (index, file) in files.iter().enumerate() {
-        context.cancel.check()?;
-        context.progress(index as f32 / files.len() as f32, format!("{} / {}", index + 1, files.len()));
-        match metadata::strip_file(file, ffmpeg.as_deref(), &context.cancel) {
-            Ok(result) => saved.push(result.output),
-            Err(EngineError::Cancelled) => return Err(EngineError::Cancelled),
-            Err(EngineError::NotFound(_)) => {
-                failed.push(format!("{}: {}", file_name(file), t(lang, Msg::MiscStripperFormats)));
-            }
-            Err(error) => failed.push(format!("{}: {error}", file_name(file))),
-        }
+/// The sentence shown in place of the extension list when fetching it failed.
+fn extension_list_error(lang: Language, error: EngineError) -> String {
+    match readable(lang, error) {
+        // The list was written for a newer WindowCraft.
+        EngineError::Unsupported(_) => t(lang, Msg::ExtNewerSchema).to_owned(),
+        EngineError::Message(sentence) => sentence,
+        other => format_1(t(lang, Msg::ExtFetchFailed), &other.to_string()),
     }
-    let Some(first) = saved.first() else {
-        return Err(EngineError::Message(failed.first().cloned().unwrap_or_default()));
-    };
-    let mut summary = format_2(t(lang, Msg::NoticeStripped), &saved.len().to_string(), &file_name(first));
-    if let Some(error) = failed.first() {
-        summary.push(' ');
-        summary.push_str(&format_2(t(lang, Msg::NoticeFailures), &failed.len().to_string(), error));
-    }
-    Ok(summary)
 }
 
 /// Input box id for `Ctrl+K`.
@@ -804,14 +700,8 @@ impl App {
                 output: String::new(),
                 disks: Vec::new(),
             },
-            extensions: ExtensionsState {
-                url: String::new(),
-                format: Format::Mp4,
-                folder: youtube::downloads_dir().display().to_string(),
-                target: convert::Target::Png,
-                installed: Vec::new(),
-                ffmpeg: false,
-            },
+            extensions: ExtensionList::NotFetched,
+            installed_extensions: Vec::new(),
             sessions: Vec::new(),
             drift: Vec::new(),
             open_session: None,
@@ -968,19 +858,6 @@ impl App {
         }
     }
 
-    /// Starts a job that writes nothing to windowcraft.log.
-    fn start_private_job(
-        &mut self,
-        label: &str,
-        body: impl FnOnce(&JobContext) -> EngineResult<String> + Send + 'static,
-    ) -> Task<Message> {
-        let task = self.start_queue_job(label, None, body);
-        if let Some(job) = &mut self.job {
-            job.private = true;
-        }
-        task
-    }
-
     /// Starts a job. When it ends, only the items of `queue` it finished are
     /// unticked, so a quick toggle never wipes a selection the user is still
     /// building.
@@ -1006,7 +883,6 @@ impl App {
             sent,
             done: None,
             kind: JobKind::Other,
-            private: false,
         });
         self.update_dock();
         if let Some(window) = self.window {
@@ -1016,6 +892,31 @@ impl App {
         Task::stream(stream::unfold(events, |mut events| async move {
             events.recv().await.map(|event| (Message::Job(event), events))
         }))
+    }
+
+    /// Starts a job that is not tied to a queue.
+    fn start_job_of_kind(
+        &mut self,
+        label: &str,
+        kind: JobKind,
+        body: impl FnOnce(&JobContext) -> EngineResult<String> + Send + 'static,
+    ) -> Task<Message> {
+        let task = self.start_queue_job(label, None, body);
+        if let Some(job) = &mut self.job {
+            job.kind = kind;
+        }
+        task
+    }
+
+    pub fn available_extension(&self, id: &str) -> Option<&Listing> {
+        match &self.extensions {
+            ExtensionList::Fetched(listings) => listings.iter().find(|listing| listing.id == id),
+            _ => None,
+        }
+    }
+
+    pub fn installed_extension(&self, id: &str) -> Option<&Installed> {
+        self.installed_extensions.iter().find(|installed| installed.listing.id == id)
     }
 
     fn queued_count(&self) -> usize {
@@ -1055,11 +956,7 @@ impl App {
             Page::Applications => self.animate(TAB, manager_index(self.manager)),
             Page::Tweaks => self.animate(TAB, self.tab.index() as f64),
             Page::Inspector => self.animate(TAB, self.inspector_tab.index() as f64),
-            Page::Extensions => {
-                self.animate(TAB, format_index(self.extensions.format));
-                self.extensions.installed = tools::installed();
-                self.extensions.ffmpeg = tools::installed_ffmpeg().is_some();
-            }
+            Page::Extensions => self.installed_extensions = extensions::installed(),
             _ => {}
         }
         self.update_dock();
@@ -1899,103 +1796,78 @@ impl App {
                     self.confirm = Some(Confirm::EraseDisk { number, disk: disk.identity.clone() });
                 }
             }
-            Message::StripPick => {
-                return Task::perform(
-                    platform::pick_open_files(
-                        t(self.language, Msg::DialogSelectMediaTitle),
-                        t(self.language, Msg::DialogMediaLabel),
-                        metadata::SUPPORTED_PATTERN,
-                    ),
-                    Message::StripPicked,
-                );
-            }
-            Message::StripPicked(files) => {
-                if files.is_empty() {
+            Message::FetchExtensions => {
+                if self.extensions == ExtensionList::Fetching {
                     return Task::none();
                 }
+                self.extensions = ExtensionList::Fetching;
                 let lang = self.language;
-                return self.start_private_job(t(lang, Msg::JobStrippingMetadata), move |context| {
-                    strip_files(lang, &files, context)
-                });
-            }
-            Message::VideoUrl(url) => self.extensions.url = url,
-            Message::VideoFormat(format) => {
-                self.extensions.format = format;
-                self.animate(TAB, format_index(format));
-            }
-            Message::VideoFolder(folder) => self.extensions.folder = folder,
-            Message::VideoBrowseFolder => {
-                return Task::perform(
-                    platform::pick_folder(t(self.language, Msg::DialogSelectFolderTitle)),
-                    Message::VideoFolderPicked,
+                return self.blocking(
+                    move |_| extensions::fetch_index().map_err(|error| extension_list_error(lang, error)),
+                    Message::ExtensionsFetched,
                 );
             }
-            Message::VideoFolderPicked(folder) => {
-                if let Some(folder) = folder {
-                    self.extensions.folder = folder.display().to_string();
-                }
-            }
-            Message::VideoDownload => {
-                let url = self.extensions.url.trim().to_owned();
-                if !youtube::is_youtube_url(&url) {
-                    self.notice = Some(t(self.language, Msg::NoticeInvalidYoutubeUrl).to_owned());
-                    return Task::none();
-                }
-                let folder = if self.extensions.folder.trim().is_empty() {
-                    youtube::downloads_dir()
-                } else {
-                    PathBuf::from(self.extensions.folder.trim())
+            Message::ExtensionsFetched(result) => {
+                self.extensions = match result {
+                    Ok(listings) => ExtensionList::Fetched(listings),
+                    Err(sentence) => ExtensionList::Failed(sentence),
                 };
-                let (lang, format) = (self.language, self.extensions.format);
-                return self.start_private_job(t(lang, Msg::JobDownloadingVideo), move |context| {
-                    let report = |stage: Stage| {
-                        let (fraction, step) = stage_step(lang, stage);
-                        context.progress(fraction, step);
-                    };
-                    let tools = tools::ready(Extension::YouTube, &context.cancel, |stage| report(Stage::Tools(stage)))
-                        .map_err(|error| readable(lang, error))?;
-                    let saved = youtube::download_video(&tools, &url, format, &folder, &context.cancel, report)?;
-                    Ok(format_1(t(lang, Msg::NoticeVideoSaved), &file_name(&saved)))
-                });
             }
-            Message::InstallExtension(extension) => {
+            Message::InstallExtension(id) => {
+                let Some(listing) = self.available_extension(&id).cloned() else {
+                    return Task::none();
+                };
                 let lang = self.language;
-                let name = extension_name(lang, extension);
-                return self.start_private_job(&format_1(t(lang, Msg::JobInstallingExtension), name), move |context| {
-                    tools::install(extension, &context.cancel, |stage| {
-                        let (fraction, step) = tool_step(lang, stage);
+                let name = listing.name(lang.tag()).to_owned();
+                let label = format_1(t(lang, Msg::JobInstallingExtension), &name);
+                return self.start_job_of_kind(&label, JobKind::ExtensionChange, move |context| {
+                    extensions::install(&listing, &context.cancel, |stage| {
+                        let (fraction, step) = install_step(lang, stage);
                         context.progress(fraction, step);
                     })
                     .map_err(|error| readable(lang, error))?;
-                    Ok(format_1(t(lang, Msg::NoticeExtensionInstalled), name))
+                    Ok(format_1(t(lang, Msg::NoticeExtensionInstalled), &name))
                 });
             }
-            Message::UninstallExtension(extension) => {
+            Message::UninstallExtension(id) => {
+                let Some(installed) = self.installed_extension(&id) else {
+                    return Task::none();
+                };
                 let lang = self.language;
-                let name = extension_name(lang, extension);
-                return self.start_private_job(&format_1(t(lang, Msg::JobRemovingExtension), name), move |_| {
-                    tools::uninstall(extension)?;
-                    Ok(format_1(t(lang, Msg::NoticeExtensionRemoved), name))
+                let name = installed.listing.name(lang.tag()).to_owned();
+                let label = format_1(t(lang, Msg::JobRemovingExtension), &name);
+                return self.start_job_of_kind(&label, JobKind::ExtensionChange, move |_| {
+                    extensions::uninstall(&id)?;
+                    Ok(format_1(t(lang, Msg::NoticeExtensionRemoved), &name))
                 });
             }
-            Message::ConvertTarget(target) => self.extensions.target = target,
-            Message::ConvertPick => {
-                return Task::perform(
-                    platform::pick_open_files(
-                        t(self.language, Msg::DialogConvertTitle),
-                        t(self.language, Msg::DialogConvertLabel),
-                        convert::INPUT_PATTERN,
-                    ),
-                    Message::ConvertPicked,
-                );
+            Message::RunExtension(id) => {
+                let Some(ui) = self.installed_extension(&id).and_then(|installed| installed.listing.ui.as_ref()) else {
+                    return Task::none();
+                };
+                let tag = self.language.tag();
+                let (title, label) = (extensions::localized(&ui.dialog, tag).to_owned(), extensions::localized(&ui.files, tag).to_owned());
+                return Task::perform(platform::pick_open_files(title, label, ui.patterns.clone()), move |files| {
+                    Message::ExtensionFilesPicked(id.clone(), files)
+                });
             }
-            Message::ConvertPicked(files) => {
+            Message::ExtensionFilesPicked(id, files) => {
+                let Some(installed) = self.installed_extension(&id).cloned() else {
+                    return Task::none();
+                };
                 if files.is_empty() {
                     return Task::none();
                 }
-                let (lang, target) = (self.language, self.extensions.target);
-                return self.start_private_job(&format_1(t(lang, Msg::JobConverting), target.label()), move |context| {
-                    convert_files(lang, &files, target, context)
+                let lang = self.language;
+                let label = installed.listing.name(lang.tag()).to_owned();
+                return self.start_job_of_kind(&label, JobKind::ExtensionRun, move |context| {
+                    extensions::run(&installed, lang.tag(), &files, &context.cancel, |share, step| context.progress(share, step))
+                        .map_err(|error| match error {
+                            EngineError::Invalid(kind) if kind == extensions::UNTRUSTED => {
+                                EngineError::Message(t(lang, Msg::ExtUntrusted).to_owned())
+                            }
+                            other => other,
+                        })
                 });
             }
             Message::Refreshed(sessions, drift) => {
@@ -2511,7 +2383,6 @@ impl App {
                 let label = job.as_ref().map(|job| job.label.clone()).unwrap_or_default();
                 let queue = job.as_ref().and_then(|job| job.queue);
                 let kind = job.as_ref().map_or(JobKind::Other, |job| job.kind);
-                let private = job.as_ref().is_some_and(|job| job.private);
                 // Reported items leave the queue whatever the outcome; without
                 // a report, a success means everything that was sent.
                 let finished: Vec<String> = match job.as_mut() {
@@ -2527,11 +2398,11 @@ impl App {
                     Ok(summary) => summary.clone(),
                     Err(error) => format_1(t(self.language, Msg::NoticeFailedPrefix), &failure_text(self.language, error)),
                 });
-                if private {
-                    self.extensions.installed = tools::installed();
-                self.extensions.ffmpeg = tools::installed_ffmpeg().is_some();
-                } else {
+                if kind != JobKind::ExtensionRun {
                     actions::append_log(&windowcraft_engine::win::local_app_dir().join("windowcraft.log"), &label, &lines);
+                }
+                if kind == JobKind::ExtensionChange {
+                    self.installed_extensions = extensions::installed();
                 }
                 self.last_log_label.clone_from(&label);
                 self.last_log = lines;
@@ -3073,7 +2944,6 @@ mod tests {
             sent: Vec::new(),
             done: None,
             kind: JobKind::Other,
-            private: false,
         }
     }
 
@@ -3123,7 +2993,6 @@ mod tests {
             sent: vec!["7zip".to_owned()],
             done: None,
             kind: JobKind::Other,
-            private: false,
         });
         send(&mut rig.app, Message::Job(JobEvent::Progress { fraction: 0.5, step: "Step".to_owned() }));
         assert_eq!(rig.app.job.as_ref().unwrap().fraction, 0.5);
@@ -3151,7 +3020,6 @@ mod tests {
             sent: Vec::new(),
             done: None,
             kind: JobKind::Other,
-            private: false,
         });
         send(&mut rig.app, Message::Job(JobEvent::Finished { outcome: Ok("Done".to_owned()) }));
         assert_eq!(rig.app.selected_tweaks.len(), 1, "a toggle must not wipe the queue");
@@ -3171,7 +3039,6 @@ mod tests {
             sent: vec!["7zip".to_owned()],
             done: None,
             kind: JobKind::Other,
-            private: false,
         });
         let error = JobFailure::from_error(&EngineError::NeedsElevation("RegSetValueExW".to_owned()));
         send(&mut rig.app, Message::Job(JobEvent::Finished { outcome: Err(error) }));
@@ -3200,7 +3067,6 @@ mod tests {
             sent: vec!["activity".to_owned(), "teredo".to_owned()],
             done: None,
             kind: JobKind::Other,
-            private: false,
         }
     }
 
@@ -3513,6 +3379,93 @@ mod tests {
         }
         send(&mut rig.app, Message::Query("telemetry".to_owned()));
         drop(crate::views::view(&rig.app));
+    }
+
+    #[test]
+    fn the_extension_list_shows_each_state_and_ignores_a_second_click_while_fetching() {
+        let mut rig = rig("extlist");
+        send(&mut rig.app, Message::Navigate(Page::Extensions));
+        assert_eq!(rig.app.extensions, ExtensionList::NotFetched);
+        drop(crate::views::view(&rig.app));
+
+        send(&mut rig.app, Message::FetchExtensions);
+        assert_eq!(rig.app.extensions, ExtensionList::Fetching);
+        assert!(rig.app.update(Message::FetchExtensions).units() == 0, "a second fetch must not start");
+        drop(crate::views::view(&rig.app));
+
+        let listings = extensions::parse_index(
+            r#"{"schema": 1, "extensions": [
+                {"id": "hello", "version": "1.0.0", "name": {"en": "Hello", "pl": "Cześć"}, "summary": {"en": "Says hello."},
+                 "author": "Nordan", "license": "MIT", "min_app": "99.0.0"}
+            ]}"#,
+        )
+        .unwrap();
+        send(&mut rig.app, Message::ExtensionsFetched(Ok(listings)));
+        assert!(matches!(&rig.app.extensions, ExtensionList::Fetched(list) if list.len() == 1));
+        drop(crate::views::view(&rig.app));
+
+        send(&mut rig.app, Message::ExtensionsFetched(Ok(Vec::new())));
+        drop(crate::views::view(&rig.app));
+
+        send(&mut rig.app, Message::ExtensionsFetched(Err("GitHub is down".to_owned())));
+        assert_eq!(rig.app.extensions, ExtensionList::Failed("GitHub is down".to_owned()));
+        drop(crate::views::view(&rig.app));
+    }
+
+/// The metadata stripper as the list has it, a newer version of it, and two
+    /// sample entries: one with no build for this computer and one that asks
+    /// for a newer WindowCraft.
+    fn sample_listings() -> (Listing, Listing, Vec<Listing>) {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/metadata-stripper.json");
+        let mut stripper: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(manifest).unwrap()).unwrap();
+        let downloads = |version: &str| {
+            let url = |arch: &str| format!("https://github.com/windowcraftdev/WindowCraftExtensions/releases/download/metadata-stripper-v{version}/metadata-stripper-{arch}.exe");
+            serde_json::json!({ "x64": { "url": url("x64"), "sha256": "0".repeat(64) }, "arm64": { "url": url("arm64"), "sha256": "0".repeat(64) } })
+        };
+        stripper["downloads"] = downloads("1.0.0");
+        let mut newer = stripper.clone();
+        newer["version"] = serde_json::json!("1.1.0");
+        newer["downloads"] = downloads("1.1.0");
+        let others = serde_json::json!([
+            {"id": "hello-world", "version": "0.1.0", "name": {"en": "Hello world", "pl": "Witaj świecie"},
+             "summary": {"en": "Sample entry without a build for this computer.", "pl": "Przykładowy wpis bez wersji na ten komputer."},
+             "author": "Nordan", "license": "MIT", "min_app": "1.5.0"},
+            {"id": "future-tool", "version": "0.2.0", "name": {"en": "Future tool"},
+             "summary": {"en": "Sample entry that asks for a newer WindowCraft."},
+             "author": "WindowCraft Dev Team", "license": "Apache-2.0", "min_app": "9.0.0"}
+        ]);
+        let parse = |entries: serde_json::Value| extensions::parse_index(&serde_json::json!({ "schema": 1, "extensions": entries }).to_string()).unwrap();
+        let stripper_listing = parse(serde_json::json!([stripper])).remove(0);
+        let newer_listing = parse(serde_json::json!([newer])).remove(0);
+        (stripper_listing, newer_listing, parse(others))
+    }
+
+    #[test]
+    fn installed_extensions_show_their_row_and_offer_an_update() {
+        let (stripper, newer, others) = sample_listings();
+        let mut rig = rig("extinstalled");
+        send(&mut rig.app, Message::Navigate(Page::Extensions));
+        rig.app.installed_extensions = vec![Installed { listing: stripper.clone(), exe: PathBuf::from("metadata-stripper.exe") }];
+        rig.app.extensions = ExtensionList::Fetched([vec![newer.clone()], others].concat());
+        assert_eq!(rig.app.available_extension("metadata-stripper"), Some(&newer));
+        assert!(rig.app.installed_extension("metadata-stripper").is_some());
+        drop(crate::views::view(&rig.app));
+        // An unknown id does nothing, so a stale button cannot start a job.
+        assert_eq!(rig.app.update(Message::InstallExtension("missing".to_owned())).units(), 0);
+        assert_eq!(rig.app.update(Message::UninstallExtension("missing".to_owned())).units(), 0);
+        assert_eq!(rig.app.update(Message::RunExtension("missing".to_owned())).units(), 0);
+        assert_eq!(rig.app.update(Message::ExtensionFilesPicked("metadata-stripper".to_owned(), Vec::new())).units(), 0);
+        assert!(rig.app.job.is_none());
+    }
+
+    #[test]
+    fn extension_list_errors_become_sentences() {
+        let lang = Language::En;
+        assert_eq!(extension_list_error(lang, EngineError::Unsupported("schema 2".to_owned())), t(lang, Msg::ExtNewerSchema));
+        let network = extension_list_error(lang, EngineError::Network("HTTP status server error (504 Gateway Timeout)".to_owned()));
+        assert_eq!(network, format_1(t(lang, Msg::NoticeGithubUnavailable), "504 Gateway Timeout"));
+        let broken = extension_list_error(lang, EngineError::Invalid("extension list: expected value".to_owned()));
+        assert!(broken.starts_with("Could not get the extension list: "), "{broken}");
     }
 
     #[test]
@@ -4077,6 +4030,45 @@ mod tests {
         }
     }
 
+    /// Writes the Extensions page in each list state to target/screens/extensions,
+    /// English and Polish, dark, 1280x800, with sample entries.
+    /// `cargo test -p windowcraft-app render_extension_list_screens -- --ignored`.
+    #[test]
+    #[ignore = "writes PNG files into target/screens"]
+    fn render_extension_list_screens() {
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/screens/extensions");
+        std::fs::create_dir_all(&out).unwrap();
+        let size = iced::Size::new(1280.0, 800.0);
+        let (stripper, newer, others) = sample_listings();
+        let installed = Installed { listing: stripper.clone(), exe: PathBuf::from("metadata-stripper.exe") };
+        let mut available = vec![stripper.clone()];
+        available.extend(others.iter().cloned());
+        let mut updated = vec![newer];
+        updated.extend(others.iter().cloned());
+        for (lang, suffix) in [(Language::En, "en"), (Language::Pl, "pl")] {
+            let mut rig = toured("render-extensions");
+            rig.app.language = lang;
+            rig.app.appearance = Appearance::Dark;
+            send(&mut rig.app, Message::Navigate(Page::Extensions));
+            let failed = extension_list_error(lang, EngineError::Network("(504 Gateway Timeout)".to_owned()));
+            for (state, mine, name) in [
+                (ExtensionList::NotFetched, Vec::new(), "1-start"),
+                (ExtensionList::Fetching, Vec::new(), "2-fetching"),
+                (ExtensionList::Fetched(Vec::new()), Vec::new(), "3-empty"),
+                (ExtensionList::Fetched(available.clone()), Vec::new(), "4-list"),
+                (ExtensionList::Fetched(available.clone()), vec![installed.clone()], "5-installed"),
+                (ExtensionList::Fetched(updated.clone()), vec![installed.clone()], "6-update"),
+                (ExtensionList::Failed(failed), vec![installed.clone()], "7-failed"),
+            ] {
+                rig.app.extensions = state;
+                rig.app.installed_extensions = mine;
+                settle(&mut rig.app);
+                rig.app.tip = None;
+                render(&rig.app, size, &out.join(format!("{name}-{suffix}.png")));
+            }
+        }
+    }
+
     /// Writes the README screenshots in docs/screenshots: English, dark, 1280x800,
     /// on the test sandbox, so no data of this computer appears.
     /// `cargo test -p windowcraft-app render_readme_screens -- --ignored`.
@@ -4111,6 +4103,12 @@ mod tests {
             (Page::Settings, "settings"),
         ] {
             send(&mut rig.app, Message::Navigate(page));
+            if page == Page::Extensions {
+                // The metadata stripper installed, and the list fetched.
+                let (stripper, _, _) = sample_listings();
+                rig.app.extensions = ExtensionList::Fetched(vec![stripper.clone()]);
+                rig.app.installed_extensions = vec![Installed { listing: stripper, exe: PathBuf::from("metadata-stripper.exe") }];
+            }
             shot(&mut rig.app, name);
         }
 

@@ -289,7 +289,7 @@ pub async fn pick_open_file(title: &'static str, label: &'static str, pattern: &
 
 /// Shows the open dialog with multiple selection. The picked files are kept
 /// out of the Recent list of Windows.
-pub async fn pick_open_files(title: &'static str, label: &'static str, pattern: &'static str) -> Vec<PathBuf> {
+pub async fn pick_open_files(title: String, label: String, pattern: String) -> Vec<PathBuf> {
     use windows::Win32::UI::Shell::{FOS_ALLOWMULTISELECT, FOS_DONTADDTORECENT, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM};
     let task = tokio::task::spawn_blocking(move || {
         // SAFETY: As in `pick_open_file`. Items are read on this thread only.

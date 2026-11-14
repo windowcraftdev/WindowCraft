@@ -135,6 +135,8 @@ fn run_gui(cli: cli::Cli) -> ExitCode {
         Ok(engine) => Arc::new(engine),
         Err(error) => return report_fatal(lang, &error.to_string()),
     };
+    // Tools of the extensions built into 1.2 to 1.4 are useless now.
+    std::thread::spawn(windowcraft_engine::extensions::remove_legacy_tools);
     let translucent = mica;
 
     let (size, min_size, position) = window_layout(platform::work_area());
