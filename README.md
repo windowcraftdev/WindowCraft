@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://windowcraft.dev"><b>windowcraft.dev</b></a> ·
   <a href="https://github.com/windowcraftdev/WindowCraft/releases/latest">Download</a> ·
-  <a href="docs/RELEASE-NOTES-1.4.1.md">Release notes</a> ·
+  <a href="docs/RELEASE-NOTES-1.5.0.md">Release notes</a> ·
   <a href="#what-it-does">What it does</a> ·
   <a href="#install">Install</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -68,7 +68,7 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
 | ISO Studio | Answer files, driver injection, ISO export and USB writing |
 | Time Machine | Every session with its changes, rollback of a session or of one change, drift detection |
 | System &amp; Gaming Inspector | MSI interrupt mode, display timers, autoruns, a cache cleaner and a DNS benchmark over UDP, TCP and DoH |
-| Extensions | Optional metadata stripper, file converter for 21 formats, ffmpeg and YouTube downloader, none installed by default |
+| Extensions | Optional extensions from the WindowCraftExtensions repository (the metadata stripper), none installed by default |
 | Settings | Eight interface languages, the theme, an optional scheduled drift check, support and website links |
 
 <table>
@@ -86,9 +86,9 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/extensions.png" alt="The Extensions page showing the four opt-in extensions" width="100%">
+      <img src="docs/screenshots/extensions.png" alt="The Extensions page with the Available extensions group and Metadata stripper" width="100%">
       <br>
-      <sub>Extensions: tools you install one at a time; everything runs on the computer.</sub>
+      <sub>Extensions: separate programs from the WindowCraftExtensions repository; everything runs on the computer.</sub>
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/settings.png" alt="The Settings page with language, theme, the automatic drift check and the About group" width="100%">
@@ -107,7 +107,7 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
 
 ## Install
 
-The current release is 1.4.1 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.4.1.md](docs/RELEASE-NOTES-1.4.1.md) lists what changed.
+The current release is 1.5.0 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.5.0.md](docs/RELEASE-NOTES-1.5.0.md) lists what changed.
 
 | File | Use it when |
 | :--- | :--- |
@@ -120,12 +120,12 @@ Checksums are in `SHA256SUMS.txt`. The builds are not code-signed, so SmartScree
 An administrator can preset the interface language for every user with `WCLANGUAGE` (`en`, `pl`, `de`, `fr`, `es`, `it`, `pt-BR` or `uk`). A user's own choice in the app wins.
 
 ```powershell
-msiexec /i WindowCraft-1.4.1-x64.msi WCLANGUAGE=pl /qn
+msiexec /i WindowCraft-1.5.0-x64.msi WCLANGUAGE=pl /qn
 ```
 
 ## Privacy
 
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The actions that connect are the ones a user starts: WinGet or Chocolatey packages, Windows ISO and tool downloads, extensions, the YouTube downloader and the DNS benchmark. Those services have their own privacy policies.
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The actions that connect are the ones a user starts: WinGet or Chocolatey packages, Windows ISO and tool downloads, the extension list and extensions from GitHub, and the DNS benchmark. Those services have their own privacy policies.
 
 ## Build and test
 
@@ -145,6 +145,6 @@ Write to <support@windowcraft.dev> or open an issue on [GitHub Issues](https://g
 
 ## License
 
-WindowCraft is under the MIT License, see [LICENSE](LICENSE). [NOTICE.md](NOTICE.md) lists the third-party material in the repository and the installers, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) the licenses of the Rust crates and LAME.
+WindowCraft is under the MIT License, see [LICENSE](LICENSE). [NOTICE.md](NOTICE.md) lists the third-party material in the repository and the installers, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) the licenses of the Rust crates.
 
 Made by Nordan.

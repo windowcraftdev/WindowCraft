@@ -1,7 +1,12 @@
 <!-- Made by Nordan -->
 # Release Checklist
 
-Status as of 2026-11-13: 1.4.1 is the current stable release, published from
+Status as of 2026-11-14: 1.5.0 is the current release. Its Extensions page installs extensions
+from github.com/windowcraftdev/WindowCraftExtensions, the first one is the metadata stripper,
+and the four built-in extensions of 1.2 to 1.4 are gone, see `docs/RELEASE-NOTES-1.5.0.md`. A
+short VM pass (upgrade from 1.4.1, the Extensions page by mouse clicks, the folder lock, the
+installers) passed; it found that metadata stripper 1.0.0 needed `VCRUNTIME140.dll`, fixed in
+1.0.1. 1.4.1 was published from
 github.com/windowcraftdev/WindowCraft with x64 and ARM64 files matching `SHA256SUMS.txt`. It
 fixes the option lists in the translated languages and seven bugs from a code review of 1.4.0,
 and moves the credit to WindowCraft Dev Team, see `docs/RELEASE-NOTES-1.4.1.md`. A short VM
