@@ -3,7 +3,7 @@
 
 WindowCraft runs elevated and changes Windows system settings, so a vulnerability can affect the whole machine. Do not open a public issue for one.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
 Submit reports privately through the GitHub Security Advisory form:
 <https://github.com/windowcraftdev/WindowCraft/security/advisories/new>

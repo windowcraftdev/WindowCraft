@@ -1,5 +1,5 @@
 # Made by Nordan
-name: Bug Report
+name: Bug report
 description: File a bug report for WindowCraft
 labels: ["bug"]
 body:
@@ -10,28 +10,28 @@ body:
   - type: input
     id: version
     attributes:
-      label: WindowCraft Version
+      label: WindowCraft version
       description: The version of WindowCraft.
     validations:
       required: true
   - type: input
     id: windows_build
     attributes:
-      label: Windows Build
+      label: Windows build
       description: The Windows 11 build number from winver.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Steps to Reproduce
+      label: Steps to reproduce
       description: The exact steps taken before the defect occurred.
     validations:
       required: true
   - type: textarea
     id: report
     attributes:
-      label: Environment Report
+      label: Environment report
       description: Run windowcraft-cli --export-report report.json and paste the file here.
       render: json
     validations:

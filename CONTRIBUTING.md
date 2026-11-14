@@ -5,7 +5,7 @@ Send changes as GitHub pull requests. WindowCraft is written in Rust for Windows
 
 The project requires the Rust toolchain specified in `rust-toolchain.toml`, the MSVC build tools, and the Windows SDK.
 
-## Build Commands
+## Build commands
 
 To build the release binary for the graphical interface:
 
@@ -29,7 +29,7 @@ For ARM64 installers, provide the architecture parameter:
 
 Building for ARM64 also requires the target `aarch64-pc-windows-msvc`, the MSVC ARM64 build tools, and clang.
 
-## Verification Commands
+## Verification commands
 
 Run the following checks before submitting changes:
 
@@ -45,7 +45,7 @@ Installer packages are verified by running PowerShell with elevated administrato
 ./packaging/verify-install.ps1
 ```
 
-## System Safety in Tests
+## System safety in tests
 
 Tests never change live system state. Code submitted in pull requests must preserve this separation.
 

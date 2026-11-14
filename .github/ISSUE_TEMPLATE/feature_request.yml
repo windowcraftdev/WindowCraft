@@ -1,5 +1,5 @@
 # Made by Nordan
-name: Feature Request
+name: Feature request
 description: Propose an addition or change to WindowCraft
 labels: ["enhancement"]
 body:
@@ -10,21 +10,21 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem Description
+      label: Problem description
       description: What system setting or workflow needs change?
     validations:
       required: true
   - type: textarea
     id: proposed_solution
     attributes:
-      label: Proposed Solution
+      label: Proposed solution
       description: What should WindowCraft do?
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives Considered
+      label: Alternatives considered
       description: Other approaches or configurations considered.
     validations:
       required: false
