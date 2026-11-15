@@ -1,6 +1,13 @@
 <!-- Made by Nordan -->
 # Changelog
 
+## 1.5.1 - 2026-11-15
+
+A list for extensions on the Extensions page, and the file converter as the second extension.
+
+- The list entry of an extension can have a `choices` block in `ui`: a label and 1 to 40 options, each with a value, a label and optional file patterns. WindowCraft shows a drop-down list next to the button and runs `<exe> --json --lang <tag> --to <value> -- <files>`. Only a value from the extension's own list reaches the command line. The file picker uses the patterns of the picked option when it has them. The picked value stays until WindowCraft closes. An entry whose list breaks a rule is left out. 1.5.0 ignores the list, so such an extension sets `min_app` to 1.5.1.
+- File converter 1.0.0 (by WindowCraft Dev Team) is in the extension list. It converts pictures to PNG, JPG, WebP, AVIF, BMP, TIFF, GIF, ICO and QOI; sound to MP3, FLAC, WAV and AIFF; copies AAC, ALAC and Opus tracks to M4A and Opus; copies video streams to MP4, MOV, MKV and WebM; and converts JSON, YAML, TOML and CSV into one another and Markdown into HTML. It has no ffmpeg and downloads nothing. MP3 is written by LAME (LGPL), the rest is Rust (MIT).
+
 ## 1.5.0 - 2026-11-14
 
 The Extensions page installs extensions from a separate repository instead of shipping them inside the app, and the credit is "Made by Nordan".

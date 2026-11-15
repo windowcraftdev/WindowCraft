@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://windowcraft.dev"><b>windowcraft.dev</b></a> ·
   <a href="https://github.com/windowcraftdev/WindowCraft/releases/latest">Download</a> ·
-  <a href="docs/RELEASE-NOTES-1.5.0.md">Release notes</a> ·
+  <a href="docs/RELEASE-NOTES-1.5.1.md">Release notes</a> ·
   <a href="#what-it-does">What it does</a> ·
   <a href="#install">Install</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -68,7 +68,7 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
 | ISO Studio | Answer files, driver injection, ISO export and USB writing |
 | Time Machine | Every session with its changes, rollback of a session or of one change, drift detection |
 | System &amp; Gaming Inspector | MSI interrupt mode, display timers, autoruns, a cache cleaner and a DNS benchmark over UDP, TCP and DoH |
-| Extensions | Optional extensions from the WindowCraftExtensions repository (the metadata stripper), none installed by default |
+| Extensions | Optional extensions from the WindowCraftExtensions repository (a metadata stripper and a file converter), none installed by default |
 | Settings | Eight interface languages, the theme, an optional scheduled drift check, support and website links |
 
 <table>
@@ -107,7 +107,7 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
 
 ## Install
 
-The current release is 1.5.0 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.5.0.md](docs/RELEASE-NOTES-1.5.0.md) lists what changed.
+The current release is 1.5.1 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.5.1.md](docs/RELEASE-NOTES-1.5.1.md) lists what changed.
 
 | File | Use it when |
 | :--- | :--- |
@@ -120,7 +120,7 @@ Checksums are in `SHA256SUMS.txt`. The builds are not code-signed, so SmartScree
 An administrator can preset the interface language for every user with `WCLANGUAGE` (`en`, `pl`, `de`, `fr`, `es`, `it`, `pt-BR` or `uk`). A user's own choice in the app wins.
 
 ```powershell
-msiexec /i WindowCraft-1.5.0-x64.msi WCLANGUAGE=pl /qn
+msiexec /i WindowCraft-1.5.1-x64.msi WCLANGUAGE=pl /qn
 ```
 
 ## Privacy

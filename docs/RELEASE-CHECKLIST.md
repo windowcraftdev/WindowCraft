@@ -1,7 +1,10 @@
 <!-- Made by Nordan -->
 # Release Checklist
 
-Status as of 2026-11-14: 1.5.0 is the current release. Its Extensions page installs extensions
+Status as of 2026-11-15: 1.5.1 is the current release. It adds a drop-down list for extensions
+(`ui.choices`, passed as `--to <value>`) and lists the file converter as the second extension, see
+`docs/RELEASE-NOTES-1.5.1.md`. The list was not clicked by hand and no VM pass ran for 1.5.1.
+1.5.0 installs extensions
 from github.com/windowcraftdev/WindowCraftExtensions, the first one is the metadata stripper,
 and the four built-in extensions of 1.2 to 1.4 are gone, see `docs/RELEASE-NOTES-1.5.0.md`. A
 short VM pass (upgrade from 1.4.1, the Extensions page by mouse clicks, the folder lock, the
@@ -238,7 +241,7 @@ These do not need repeating unless the code changes.
 
 | Area | Result |
 | :--- | :--- |
-| Unit and integration tests | 554 pass in 1.5.0 (538 in 1.3.0, 511 in 1.2.1, 504 in 1.2.0, 449 in 1.1.0, 432 in 1.0.3, 407 in 1.0.0), 4 network tests are opt-in and pass (pinned downloads, TLS, DNS benchmark), clippy clean with `-D warnings` |
+| Unit and integration tests | 558 pass in 1.5.1 (554 in 1.5.0, 538 in 1.3.0, 511 in 1.2.1, 504 in 1.2.0, 449 in 1.1.0, 432 in 1.0.3, 407 in 1.0.0), 4 network tests are opt-in and pass (pinned downloads, TLS, DNS benchmark), clippy clean with `-D warnings` |
 | GitHub CI | Passes on an elevated Windows Server 2025 runner, including the ARM64 compile |
 | Lockfile | `cargo check --locked` passes |
 | Console program | `windowcraft-cli` waits, passes output through, returns exit codes, and reports a missing `windowcraft.exe` |
