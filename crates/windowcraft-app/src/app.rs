@@ -371,7 +371,10 @@ pub enum Message {
     UninstallExtension(String),
     /// Opens the file picker of an installed extension.
     RunExtension(String),
-    ExtensionFilesPicked(String, Vec<PathBuf>),
+    /// The id, the value picked in the list, and the files.
+    ExtensionFilesPicked(String, Option<String>, Vec<PathBuf>),
+    /// A value picked in the list of an installed extension.
+    ExtensionChoice(String, String),
     // Time Machine
     /// None keeps what is shown, because the read failed.
     Refreshed(Option<Vec<Session>>, Option<Vec<Drift>>),
@@ -541,6 +544,9 @@ pub struct App {
     pub extensions: ExtensionList,
     /// Read when the Extensions page opens and after each install or removal.
     pub installed_extensions: Vec<Installed>,
+    /// The value picked in the list of each installed extension, by id. It is
+    /// kept until WindowCraft closes.
+    pub extension_choices: BTreeMap<String, String>,
     // Time Machine
     pub sessions: Vec<Session>,
     pub drift: Vec<Drift>,
@@ -702,6 +708,7 @@ impl App {
             },
             extensions: ExtensionList::NotFetched,
             installed_extensions: Vec::new(),
+            extension_choices: BTreeMap::new(),
             sessions: Vec::new(),
             drift: Vec::new(),
             open_session: None,
@@ -917,6 +924,15 @@ impl App {
 
     pub fn installed_extension(&self, id: &str) -> Option<&Installed> {
         self.installed_extensions.iter().find(|installed| installed.listing.id == id)
+    }
+
+    /// The value shown in the list of an installed extension: the one the
+    /// user picked while it is still listed, else the first.
+    pub fn extension_choice(&self, installed: &Installed) -> Option<String> {
+        let choices = installed.listing.ui.as_ref()?.choices.as_ref()?;
+        let picked = self.extension_choices.get(&installed.listing.id);
+        let option = picked.and_then(|value| choices.options.iter().find(|option| &option.value == value)).or(choices.options.first())?;
+        Some(option.value.clone())
     }
 
     fn queued_count(&self) -> usize {
@@ -1842,16 +1858,24 @@ impl App {
                 });
             }
             Message::RunExtension(id) => {
-                let Some(ui) = self.installed_extension(&id).and_then(|installed| installed.listing.ui.as_ref()) else {
+                let Some(installed) = self.installed_extension(&id) else {
                     return Task::none();
                 };
+                let Some(ui) = installed.listing.ui.as_ref() else {
+                    return Task::none();
+                };
+                let choice = self.extension_choice(installed);
                 let tag = self.language.tag();
                 let (title, label) = (extensions::localized(&ui.dialog, tag).to_owned(), extensions::localized(&ui.files, tag).to_owned());
-                return Task::perform(platform::pick_open_files(title, label, ui.patterns.clone()), move |files| {
-                    Message::ExtensionFilesPicked(id.clone(), files)
+                let patterns = ui.patterns_for(choice.as_deref()).to_owned();
+                return Task::perform(platform::pick_open_files(title, label, patterns), move |files| {
+                    Message::ExtensionFilesPicked(id.clone(), choice.clone(), files)
                 });
             }
-            Message::ExtensionFilesPicked(id, files) => {
+            Message::ExtensionChoice(id, value) => {
+                self.extension_choices.insert(id, value);
+            }
+            Message::ExtensionFilesPicked(id, choice, files) => {
                 let Some(installed) = self.installed_extension(&id).cloned() else {
                     return Task::none();
                 };
@@ -1861,7 +1885,7 @@ impl App {
                 let lang = self.language;
                 let label = installed.listing.name(lang.tag()).to_owned();
                 return self.start_job_of_kind(&label, JobKind::ExtensionRun, move |context| {
-                    extensions::run(&installed, lang.tag(), &files, &context.cancel, |share, step| context.progress(share, step))
+                    extensions::run(&installed, lang.tag(), choice.as_deref(), &files, &context.cancel, |share, step| context.progress(share, step))
                         .map_err(|error| match error {
                             EngineError::Invalid(kind) if kind == extensions::UNTRUSTED => {
                                 EngineError::Message(t(lang, Msg::ExtUntrusted).to_owned())
@@ -3440,6 +3464,37 @@ mod tests {
         (stripper_listing, newer_listing, parse(others))
     }
 
+    /// The file converter's manifest, a copy of the one in WindowCraftExtensions.
+    fn listing_with_choices() -> Listing {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/file-converter.json");
+        let entry: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(manifest).unwrap()).unwrap();
+        let mut listings = extensions::parse_index(&serde_json::json!({ "schema": 1, "extensions": [entry] }).to_string()).unwrap();
+        assert_eq!(listings.len(), 1, "the converter manifest breaks a rule of extensions.rs");
+        listings.remove(0)
+    }
+
+    #[test]
+    fn an_extension_list_keeps_the_picked_value() {
+        let mut rig = rig("extchoices");
+        send(&mut rig.app, Message::Navigate(Page::Extensions));
+        let converter = Installed { listing: listing_with_choices(), exe: PathBuf::from("file-converter.exe") };
+        rig.app.installed_extensions = vec![converter.clone()];
+        assert_eq!(rig.app.extension_choice(&converter).as_deref(), Some("png"));
+        drop(crate::views::view(&rig.app));
+        let ui = converter.listing.ui.as_ref().unwrap();
+        assert_eq!(ui.patterns_for(Some("html")), "*.md;*.markdown");
+        send(&mut rig.app, Message::ExtensionChoice("file-converter".to_owned(), "mp3".to_owned()));
+        assert_eq!(rig.app.extension_choice(&converter).as_deref(), Some("mp3"));
+        drop(crate::views::view(&rig.app));
+        // A value the list no longer has falls back to the first.
+        send(&mut rig.app, Message::ExtensionChoice("file-converter".to_owned(), "gone".to_owned()));
+        assert_eq!(rig.app.extension_choice(&converter).as_deref(), Some("png"));
+        let (stripper, _, _) = sample_listings();
+        assert_eq!(rig.app.extension_choice(&Installed { listing: stripper, exe: PathBuf::from("metadata-stripper.exe") }), None);
+        assert_eq!(rig.app.update(Message::ExtensionFilesPicked("file-converter".to_owned(), Some("png".to_owned()), Vec::new())).units(), 0);
+        assert!(rig.app.job.is_none());
+    }
+
     #[test]
     fn installed_extensions_show_their_row_and_offer_an_update() {
         let (stripper, newer, others) = sample_listings();
@@ -3454,7 +3509,7 @@ mod tests {
         assert_eq!(rig.app.update(Message::InstallExtension("missing".to_owned())).units(), 0);
         assert_eq!(rig.app.update(Message::UninstallExtension("missing".to_owned())).units(), 0);
         assert_eq!(rig.app.update(Message::RunExtension("missing".to_owned())).units(), 0);
-        assert_eq!(rig.app.update(Message::ExtensionFilesPicked("metadata-stripper".to_owned(), Vec::new())).units(), 0);
+        assert_eq!(rig.app.update(Message::ExtensionFilesPicked("metadata-stripper".to_owned(), None, Vec::new())).units(), 0);
         assert!(rig.app.job.is_none());
     }
 
@@ -4041,6 +4096,7 @@ mod tests {
         let size = iced::Size::new(1280.0, 800.0);
         let (stripper, newer, others) = sample_listings();
         let installed = Installed { listing: stripper.clone(), exe: PathBuf::from("metadata-stripper.exe") };
+        let converter = Installed { listing: listing_with_choices(), exe: PathBuf::from("file-converter.exe") };
         let mut available = vec![stripper.clone()];
         available.extend(others.iter().cloned());
         let mut updated = vec![newer];
@@ -4059,6 +4115,7 @@ mod tests {
                 (ExtensionList::Fetched(available.clone()), vec![installed.clone()], "5-installed"),
                 (ExtensionList::Fetched(updated.clone()), vec![installed.clone()], "6-update"),
                 (ExtensionList::Failed(failed), vec![installed.clone()], "7-failed"),
+                (ExtensionList::NotFetched, vec![converter.clone(), installed.clone()], "8-choices"),
             ] {
                 rig.app.extensions = state;
                 rig.app.installed_extensions = mine;

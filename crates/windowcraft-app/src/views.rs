@@ -1144,12 +1144,25 @@ fn installed_rows<'a>(app: &'a App, p: Palette, installed: &'a Installed) -> Vec
     match &listing.ui {
         Some(ui) => {
             let run = idle.then(|| Message::RunExtension(listing.id.clone()));
-            rows.push(setting_row(
-                p,
-                extensions::localized(&ui.title, tag),
-                listing.summary(tag),
-                button(p, extensions::localized(&ui.button, tag), Some(Icon::Folder), Tone::Primary, run),
-            ));
+            let start = button(p, extensions::localized(&ui.button, tag), Some(Icon::Folder), Tone::Primary, run);
+            let trailing: El<'a> = match &ui.choices {
+                Some(choices) => {
+                    let options: Vec<Choice> = choices
+                        .options
+                        .iter()
+                        .map(|option| Choice { value: option.value.clone(), label: extensions::localized(&option.label, tag).to_owned() })
+                        .collect();
+                    let current = chosen(&options, app.extension_choice(installed).as_deref());
+                    let id = listing.id.clone();
+                    let list = select(p, options, current, move |choice: Choice| Message::ExtensionChoice(id.clone(), choice.value));
+                    row![caption(extensions::localized(&choices.label, tag), p.ink_secondary), list, start]
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .into()
+                }
+                None => start,
+            };
+            rows.push(setting_row(p, extensions::localized(&ui.title, tag), listing.summary(tag), trailing));
             if let Some(note) = &ui.note {
                 rows.push(note_row(extensions::localized(note, tag), p.ink_tertiary));
             }

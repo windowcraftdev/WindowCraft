@@ -16,7 +16,8 @@
 //!
 //! WindowCraft runs an extension as `<entry> --json --lang <tag> -- <file>...`
 //! and reads one JSON object per line from its output: `progress` with
-//! `step`, then `summary` on success or `error` on failure.
+//! `step`, then `summary` on success or `error` on failure. An extension
+//! with a `choices` list gets `--to <value>` before `--`.
 
 use crate::download::{block_on, download, download_accepting, fetch_text, fetch_text_accepting};
 use crate::error::{EngineError, Result};
@@ -45,6 +46,9 @@ const MAX_NAME: usize = 48;
 const MAX_SUMMARY: usize = 280;
 const MAX_AUTHOR: usize = 48;
 const MAX_LICENSE: usize = 64;
+const MAX_CHOICES: usize = 40;
+const MAX_CHOICE_VALUE: usize = 16;
+const MAX_CHOICE_LABEL: usize = 40;
 /// A real index is a few kilobytes; anything far bigger is not one.
 const MAX_INDEX_BYTES: usize = 1 << 20;
 /// Longest text taken from an extension's output.
@@ -70,6 +74,38 @@ pub struct Ui {
     pub files: Texts,
     /// `*.jpg;*.png` and so on.
     pub patterns: String,
+    /// A list next to the button, for an extension that does one of several
+    /// things, such as a converter and its target format.
+    pub choices: Option<Choices>,
+}
+
+/// The list next to the button. The chosen value goes to the extension as
+/// `--to <value>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Choices {
+    pub label: Texts,
+    /// At least one; the first is chosen until the user picks another.
+    pub options: Vec<ChoiceOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChoiceOption {
+    pub value: String,
+    pub label: Texts,
+    /// Files the picker shows for this option, else the `patterns` of the
+    /// whole extension.
+    pub patterns: Option<String>,
+}
+
+impl Ui {
+    pub fn choice(&self, value: &str) -> Option<&ChoiceOption> {
+        self.choices.as_ref()?.options.iter().find(|option| option.value == value)
+    }
+
+    /// The patterns for the file picker with `value` chosen.
+    pub fn patterns_for(&self, value: Option<&str>) -> &str {
+        value.and_then(|value| self.choice(value)).and_then(|option| option.patterns.as_deref()).unwrap_or(&self.patterns)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,6 +204,22 @@ struct RawUi {
     dialog: Texts,
     files: Texts,
     patterns: String,
+    #[serde(default)]
+    choices: Option<RawChoices>,
+}
+
+#[derive(Deserialize)]
+struct RawChoices {
+    label: Texts,
+    options: Vec<RawChoiceOption>,
+}
+
+#[derive(Deserialize)]
+struct RawChoiceOption {
+    value: String,
+    label: Texts,
+    #[serde(default)]
+    patterns: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -275,6 +327,10 @@ fn check(raw: RawListing, raw_text: String) -> Option<Listing> {
                 dialog: texts(ui.dialog, 80)?,
                 files: texts(ui.files, 60)?,
                 patterns: ui.patterns,
+                choices: match ui.choices {
+                    Some(raw) => Some(choices(raw)?),
+                    None => None,
+                },
             })
         }
     };
@@ -304,6 +360,29 @@ fn check(raw: RawListing, raw_text: String) -> Option<Listing> {
         downloads,
         raw: raw_text,
     })
+}
+
+/// A value goes on the extension's command line, so it is a short word that
+/// cannot look like an option.
+fn valid_choice_value(value: &str) -> bool {
+    (1..=MAX_CHOICE_VALUE).contains(&value.len())
+        && value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !value.starts_with('-')
+}
+
+fn choices(raw: RawChoices) -> Option<Choices> {
+    if !(1..=MAX_CHOICES).contains(&raw.options.len()) {
+        return None;
+    }
+    let mut options: Vec<ChoiceOption> = Vec::with_capacity(raw.options.len());
+    for option in raw.options {
+        let unique = !options.iter().any(|known| known.value == option.value);
+        if !valid_choice_value(&option.value) || !unique || option.patterns.as_deref().is_some_and(|patterns| !valid_patterns(patterns)) {
+            return None;
+        }
+        options.push(ChoiceOption { value: option.value, label: texts(option.label, MAX_CHOICE_LABEL)?, patterns: option.patterns });
+    }
+    Some(Choices { label: texts(raw.label, MAX_CHOICE_LABEL)?, options })
 }
 
 /// Language map with only known tags, each text valid, and "en" present.
@@ -603,14 +682,33 @@ fn clean_output(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).take(MAX_OUTPUT_TEXT).collect::<String>().trim().to_owned()
 }
 
-/// Runs an installed extension on `files` and returns its summary. A
-/// sentence from the extension comes back as `EngineError::Message`.
-pub fn run(installed: &Installed, lang: &str, files: &[PathBuf], cancel: &CancelToken, mut progress: impl FnMut(f32, String)) -> Result<String> {
+/// The arguments before the files. A choice the extension's list does not
+/// have is left out.
+fn leading_args<'a>(installed: &Installed, lang: &'a str, choice: Option<&'a str>) -> Vec<&'a str> {
+    let mut args = vec!["--json", "--lang", lang];
+    if let Some(value) = choice.filter(|value| installed.listing.ui.as_ref().is_some_and(|ui| ui.choice(value).is_some())) {
+        args.extend(["--to", value]);
+    }
+    args.push("--");
+    args
+}
+
+/// Runs an installed extension on `files` and returns its summary. `choice`
+/// is the value picked in the extension's list. A sentence from the
+/// extension comes back as `EngineError::Message`.
+pub fn run(
+    installed: &Installed,
+    lang: &str,
+    choice: Option<&str>,
+    files: &[PathBuf],
+    cancel: &CancelToken,
+    mut progress: impl FnMut(f32, String),
+) -> Result<String> {
     if !trusted(installed) {
         return Err(EngineError::Invalid(UNTRUSTED.to_owned()));
     }
     let paths: Vec<String> = files.iter().map(|file| file.display().to_string()).collect();
-    let mut args = vec!["--json", "--lang", lang, "--"];
+    let mut args = leading_args(installed, lang, choice);
     args.extend(paths.iter().map(String::as_str));
     let (mut summary, mut error, mut last) = (None, None, String::new());
     let output = crate::process::run(&installed.exe, &args, cancel, RUN_TIMEOUT, |line| match parse_line(line) {
@@ -762,6 +860,71 @@ mod tests {
         assert!(listing.download_here().is_none() && listing.ui.is_none());
     }
 
+    fn with_choices(options: serde_json::Value) -> serde_json::Value {
+        let mut listing = entry("convert");
+        listing["ui"]["choices"] = serde_json::json!({ "label": { "en": "Convert to", "pl": "Konwertuj na" }, "options": options });
+        listing
+    }
+
+    fn converter() -> Listing {
+        let options = serde_json::json!([
+            { "value": "png", "label": { "en": "PNG image", "pl": "Obraz PNG" }, "patterns": "*.jpg;*.bmp" },
+            { "value": "mp3", "label": { "en": "MP3 audio" } }
+        ]);
+        parse_index(&index(vec![with_choices(options)])).unwrap().remove(0)
+    }
+
+    #[test]
+    fn reads_choices_and_their_patterns() {
+        let listing = converter();
+        let ui = listing.ui.as_ref().unwrap();
+        let choices = ui.choices.as_ref().unwrap();
+        assert_eq!(localized(&choices.label, "pl"), "Konwertuj na");
+        assert_eq!(choices.options.iter().map(|option| option.value.as_str()).collect::<Vec<_>>(), ["png", "mp3"]);
+        assert_eq!(localized(&choices.options[0].label, "pl"), "Obraz PNG");
+        assert_eq!(ui.patterns_for(Some("png")), "*.jpg;*.bmp");
+        assert_eq!(ui.patterns_for(Some("mp3")), "*.txt;*.md");
+        assert_eq!(ui.patterns_for(Some("missing")), "*.txt;*.md");
+        assert_eq!(ui.patterns_for(None), "*.txt;*.md");
+        assert!(hello().ui.unwrap().choices.is_none());
+    }
+
+    #[test]
+    fn choices_that_break_a_rule_drop_the_entry() {
+        let option = |value: &str| serde_json::json!({ "value": value, "label": { "en": "Label" } });
+        let too_many: Vec<_> = (0..41).map(|number| option(&format!("v{number}"))).collect();
+        for options in [
+            serde_json::json!([]),
+            serde_json::Value::Array(too_many),
+            serde_json::json!([option("png"), option("png")]),
+            serde_json::json!([option("--evil")]),
+            serde_json::json!([option("-x")]),
+            serde_json::json!([option("PNG")]),
+            serde_json::json!([option("a b")]),
+            serde_json::json!([option(&"x".repeat(17))]),
+            serde_json::json!([{ "value": "png", "label": { "pl": "Bez angielskiego" } }]),
+            serde_json::json!([{ "value": "png", "label": { "en": "x".repeat(41) } }]),
+            serde_json::json!([{ "value": "png", "label": { "en": "PNG" }, "patterns": "*.JPG" }]),
+        ] {
+            assert!(parse_index(&index(vec![with_choices(options.clone())])).unwrap().is_empty(), "{options}");
+        }
+        let mut no_label = with_choices(serde_json::json!([option("png")]));
+        no_label["ui"]["choices"].as_object_mut().unwrap().remove("label");
+        assert!(parse_index(&index(vec![no_label])).unwrap().is_empty());
+        let forty: Vec<_> = (0..40).map(|number| option(&format!("v{number}"))).collect();
+        assert_eq!(parse_index(&index(vec![with_choices(serde_json::Value::Array(forty))])).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn only_a_listed_choice_reaches_the_command_line() {
+        let installed = Installed { listing: converter(), exe: PathBuf::from("convert.exe") };
+        assert_eq!(leading_args(&installed, "pl", Some("mp3")), ["--json", "--lang", "pl", "--to", "mp3", "--"]);
+        assert_eq!(leading_args(&installed, "pl", Some("--help")), ["--json", "--lang", "pl", "--"]);
+        assert_eq!(leading_args(&installed, "en", None), ["--json", "--lang", "en", "--"]);
+        let plain = Installed { listing: hello(), exe: PathBuf::from("hello.exe") };
+        assert_eq!(leading_args(&plain, "en", Some("mp3")), ["--json", "--lang", "en", "--"]);
+    }
+
     #[test]
     fn duplicates_keep_the_first_and_the_list_is_sorted() {
         let mut second = entry("alpha");
@@ -908,13 +1071,45 @@ mod tests {
         let photo = temp.path().join("photo.jpg");
         std::fs::write(&photo, [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x0A, b'E', b'x', b'i', b'f', 0, 0, 1, 2, 0xFF, 0xD9]).unwrap();
         let mut steps = Vec::new();
-        let summary = run(&installed, "pl", std::slice::from_ref(&photo), &CancelToken::new(), |share, step| steps.push((share, step))).unwrap();
+        let summary = run(&installed, "pl", None, std::slice::from_ref(&photo), &CancelToken::new(), |share, step| steps.push((share, step))).unwrap();
         println!("steps {steps:?}\nsummary {summary}");
         assert_eq!(steps, [(0.0, "1 / 1: photo.jpg".to_owned())]);
         assert!(summary.contains("photo-clean.jpg"), "{summary}");
         assert!(temp.path().join("photo-clean.jpg").is_file());
 
-        let error = run(&installed, "en", &[temp.path().join("clip.flv")], &CancelToken::new(), |_, _| {}).unwrap_err();
+        let error = run(&installed, "en", None, &[temp.path().join("clip.flv")], &CancelToken::new(), |_, _| {}).unwrap_err();
+        println!("error {error}");
+        assert!(matches!(error, EngineError::Message(_)), "{error:?}");
+    }
+
+    /// Installs a locally built file converter and runs it with a value from
+    /// its list: `WINDOWCRAFT_CONVERTER_EXE=<path to file-converter.exe>
+    /// cargo test -p windowcraft-engine live_converter_run -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs a built file-converter.exe"]
+    fn live_converter_run() {
+        let built = PathBuf::from(std::env::var_os("WINDOWCRAFT_CONVERTER_EXE").expect("WINDOWCRAFT_CONVERTER_EXE"));
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("extensions");
+        let mut listing = entry("file-converter");
+        listing["entry"] = serde_json::json!("file-converter.exe");
+        listing["ui"]["choices"] = serde_json::json!({
+            "label": { "en": "Convert to" },
+            "options": [{ "value": "yaml", "label": { "en": "YAML" } }, { "value": "toml", "label": { "en": "TOML" } }]
+        });
+        let listing = listing_from(listing).unwrap();
+        install_in(&root, &listing, &CancelToken::new(), |_, file| std::fs::copy(&built, file).map(|_| ()).map_err(io_error(file))).unwrap();
+        let installed = installed_in(&root).remove(0);
+
+        let data = temp.path().join("data.json");
+        std::fs::write(&data, r#"{"name": "WindowCraft", "list": [1, 2]}"#).unwrap();
+        let summary = run(&installed, "pl", Some("toml"), std::slice::from_ref(&data), &CancelToken::new(), |_, _| {}).unwrap();
+        println!("summary {summary}");
+        assert!(summary.contains("data.toml"), "{summary}");
+        assert!(std::fs::read_to_string(temp.path().join("data.toml")).unwrap().contains("name = \"WindowCraft\""));
+
+        // Without a value the converter has nothing to do and says so.
+        let error = run(&installed, "en", None, std::slice::from_ref(&data), &CancelToken::new(), |_, _| {}).unwrap_err();
         println!("error {error}");
         assert!(matches!(error, EngineError::Message(_)), "{error:?}");
     }
@@ -938,7 +1133,7 @@ mod tests {
         let stripper = installed_in(&root).into_iter().find(|installed| installed.listing.id == "metadata-stripper").unwrap();
         let photo = temp.path().join("photo.jpg");
         std::fs::write(&photo, [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x0A, b'E', b'x', b'i', b'f', 0, 0, 1, 2, 0xFF, 0xD9]).unwrap();
-        let summary = run(&stripper, "pl", std::slice::from_ref(&photo), &cancel, |_, _| {}).unwrap();
+        let summary = run(&stripper, "pl", None, std::slice::from_ref(&photo), &cancel, |_, _| {}).unwrap();
         println!("{summary}");
         assert!(temp.path().join("photo-clean.jpg").is_file());
 
@@ -953,7 +1148,7 @@ mod tests {
                 .output()
                 .unwrap();
             assert!(grant.status.success());
-            let refused = run(&stripper, "en", std::slice::from_ref(&photo), &cancel, |_, _| {});
+            let refused = run(&stripper, "en", None, std::slice::from_ref(&photo), &cancel, |_, _| {});
             println!("after icacls: {refused:?}");
             assert!(matches!(refused, Err(EngineError::Invalid(kind)) if kind == UNTRUSTED));
             println!("elevated: folder locked, changed exe refused");
