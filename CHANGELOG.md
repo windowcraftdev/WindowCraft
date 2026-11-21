@@ -1,6 +1,15 @@
 <!-- Made by Nordan -->
 # Changelog
 
+## 1.5.2 - 2026-11-21
+
+Three fixes in the catalog, found while writing the user guide, and the guide itself.
+
+- "Security / Recommended" on the Windows Updates page now also removes `NoAutoUpdate`, sets BITS and wuauserv to Manual and UsoSvc to Automatic, and enables the update scheduled tasks. Before, it left all of that as "Disable ALL Updates" had set it, so updates stayed off after a switch from that mode.
+- "Remove Microsoft Edge" is marked as irreversible, because the uninstaller deletes the Edge profile. "Run Tweaks" now asks for confirmation before it runs, and X-Ray Inspector shows no undo button for it. Rolling back the session still reinstalls Edge through WinGet and marks the session partly rolled back.
+- "New Outlook for Windows" wrote `DoNewOutlookAutoMigration = 0` both on and off. On now removes the policy value, off sets it to 0.
+- `docs/guide/` is a reference for every page except Applications: each tweak, option and extension with what it changes and how to undo it. windowcraft.dev shows it under /docs/.
+
 ## 1.5.1 - 2026-11-15
 
 A list for extensions on the Extensions page, and the file converter as the second extension.

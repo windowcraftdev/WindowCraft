@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://windowcraft.dev"><b>windowcraft.dev</b></a> ·
   <a href="https://github.com/windowcraftdev/WindowCraft/releases/latest">Download</a> ·
-  <a href="docs/RELEASE-NOTES-1.5.1.md">Release notes</a> ·
+  <a href="docs/RELEASE-NOTES-1.5.2.md">Release notes</a> ·
   <a href="#what-it-does">What it does</a> ·
   <a href="#install">Install</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -57,7 +57,7 @@
 
 ## What it does
 
-WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automated runs. The full guide is on [windowcraft.dev](https://windowcraft.dev).
+WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automated runs. The full guide is in [docs/guide](docs/guide/README.md) and on [windowcraft.dev/docs](https://windowcraft.dev/docs/).
 
 | Page | What it covers |
 | :--- | :--- |
@@ -107,7 +107,7 @@ WindowCraft has nine pages in one window, plus `windowcraft-cli.exe` for automat
 
 ## Install
 
-The current release is 1.5.1 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.5.1.md](docs/RELEASE-NOTES-1.5.1.md) lists what changed.
+The current release is 1.5.2 on Windows 11 (build 22000 or later). Downloads are on the [Releases page](https://github.com/windowcraftdev/WindowCraft/releases/latest), and [docs/RELEASE-NOTES-1.5.2.md](docs/RELEASE-NOTES-1.5.2.md) lists what changed.
 
 | File | Use it when |
 | :--- | :--- |
@@ -120,7 +120,7 @@ Checksums are in `SHA256SUMS.txt`. The builds are not code-signed, so SmartScree
 An administrator can preset the interface language for every user with `WCLANGUAGE` (`en`, `pl`, `de`, `fr`, `es`, `it`, `pt-BR` or `uk`). A user's own choice in the app wins.
 
 ```powershell
-msiexec /i WindowCraft-1.5.1-x64.msi WCLANGUAGE=pl /qn
+msiexec /i WindowCraft-1.5.2-x64.msi WCLANGUAGE=pl /qn
 ```
 
 ## Privacy

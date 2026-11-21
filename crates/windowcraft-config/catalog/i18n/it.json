@@ -161,7 +161,7 @@
  },
  "updates": {
   "default": {"name": "Predefinito", "description": "Rimuove i criteri di aggiornamento impostati da WindowCraft, riporta BITS e wuauserv su Manuale e UsoSvc su Automatico e riattiva le attività pianificate di aggiornamento."},
-  "security": {"name": "Sicurezza / consigliato", "description": "Esclude i driver da Windows Update, rinvia gli aggiornamenti delle funzionalità di 365 giorni e quelli qualitativi di 4 giorni e blocca i riavvii automatici mentre un utente è connesso."},
+  "security": {"name": "Sicurezza / consigliato", "description": "Esclude i driver da Windows Update, rinvia gli aggiornamenti delle funzionalità di 365 giorni e quelli qualitativi di 4 giorni, blocca i riavvii mentre un utente è connesso e riattiva gli aggiornamenti automatici, i servizi di aggiornamento e le relative attività."},
   "disabled": {"name": "Disattiva TUTTI gli aggiornamenti", "description": "Imposta NoAutoUpdate=1, ferma e disattiva BITS, wuauserv e UsoSvc, svuota SoftwareDistribution e disattiva tutte le attività pianificate di aggiornamento. Il sistema smette di ricevere le correzioni di sicurezza."}
  },
  "apps": {

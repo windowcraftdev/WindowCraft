@@ -161,7 +161,7 @@
  },
  "updates": {
   "default": {"name": "Padrão", "description": "Remove as políticas de atualização definidas pelo WindowCraft, volta o BITS e o wuauserv para Manual e o UsoSvc para Automático e ativa de novo as tarefas agendadas de atualização."},
-  "security": {"name": "Segurança / recomendado", "description": "Exclui os drivers do Windows Update, adia as atualizações de recursos em 365 dias e as de qualidade em 4 dias e bloqueia reinícios automáticos enquanto houver um usuário conectado."},
+  "security": {"name": "Segurança / recomendado", "description": "Exclui drivers do Windows Update, adia atualizações de recursos em 365 dias e de qualidade em 4 dias, bloqueia reinicializações enquanto houver um usuário conectado e reativa as atualizações automáticas, os serviços de atualização e suas tarefas."},
   "disabled": {"name": "Desativar TODAS as atualizações", "description": "Coloca NoAutoUpdate=1, para e desativa o BITS, o wuauserv e o UsoSvc, limpa o SoftwareDistribution e desativa todas as tarefas agendadas de atualização. O sistema deixa de receber correções de segurança."}
  },
  "apps": {

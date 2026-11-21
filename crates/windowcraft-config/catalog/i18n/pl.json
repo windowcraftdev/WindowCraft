@@ -161,7 +161,7 @@
  },
  "updates": {
   "default": {"name": "Domyślne", "description": "Usuwa zasady aktualizacji ustawione przez WindowCraft, przywraca BITS i wuauserv na Ręczne, a UsoSvc na Automatyczne i ponownie włącza zaplanowane zadania aktualizacji."},
-  "security": {"name": "Zabezpieczenia / zalecane", "description": "Wyłącza sterowniki z Windows Update, odracza aktualizacje funkcji o 365 dni, a jakościowe o 4 dni i blokuje automatyczne ponowne uruchomienie, gdy ktoś jest zalogowany."},
+  "security": {"name": "Zabezpieczenia / zalecane", "description": "Wyłącza sterowniki z Windows Update, odracza aktualizacje funkcji o 365 dni, a jakościowe o 4 dni, blokuje ponowne uruchomienie, gdy ktoś jest zalogowany, i z powrotem włącza automatyczne aktualizacje, usługi aktualizacji oraz ich zadania."},
   "disabled": {"name": "Wyłącz WSZYSTKIE aktualizacje", "description": "Ustawia NoAutoUpdate=1, zatrzymuje i wyłącza BITS, wuauserv i UsoSvc, czyści SoftwareDistribution i wyłącza wszystkie zaplanowane zadania aktualizacji. System przestaje otrzymywać poprawki zabezpieczeń."}
  },
  "apps": {

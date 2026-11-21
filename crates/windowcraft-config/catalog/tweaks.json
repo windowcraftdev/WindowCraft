@@ -653,6 +653,7 @@
     "description": "Creates a placeholder file in the old Edge directory and runs the Microsoft Edge installer to remove the browser system-wide.",
     "group": "advanced",
     "kind": "check",
+    "irreversible": true,
     "apply": [
       {
         "op": "remove_edge"
@@ -1445,9 +1446,9 @@
         "path": "HKCU\\Software\\Policies\\Microsoft\\Office\\16.0\\Outlook\\Options\\General",
         "name": "DoNewOutlookAutoMigration",
         "kind": "DWord",
-        "value": "0",
+        "value": "<RemoveEntry>",
         "original": "0",
-        "default_on": false
+        "default_on": true
       },
       {
         "path": "HKCU\\Software\\Policies\\Microsoft\\Office\\16.0\\Outlook\\Preferences",

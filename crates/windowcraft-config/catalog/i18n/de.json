@@ -161,7 +161,7 @@
  },
  "updates": {
   "default": {"name": "Standard", "description": "Entfernt die von WindowCraft gesetzten Updaterichtlinien, setzt BITS und wuauserv wieder auf Manuell und UsoSvc auf Automatisch und schaltet die geplanten Updateaufgaben wieder ein."},
-  "security": {"name": "Sicherheit / empfohlen", "description": "Nimmt Treiber von Windows Update aus, verschiebt Funktionsupdates um 365 Tage und Qualitätsupdates um 4 Tage und verhindert automatische Neustarts, solange ein Benutzer angemeldet ist."},
+  "security": {"name": "Sicherheit / empfohlen", "description": "Schließt Treiber von Windows Update aus, verschiebt Funktionsupdates um 365 Tage und Qualitätsupdates um 4 Tage, verhindert Neustarts, solange jemand angemeldet ist, und schaltet automatische Updates, die Update-Dienste und die Update-Aufgaben wieder ein."},
   "disabled": {"name": "ALLE Updates abschalten", "description": "Setzt NoAutoUpdate=1, beendet und deaktiviert BITS, wuauserv und UsoSvc, leert SoftwareDistribution und deaktiviert alle geplanten Updateaufgaben. Das System erhält keine Sicherheitsupdates mehr."}
  },
  "apps": {

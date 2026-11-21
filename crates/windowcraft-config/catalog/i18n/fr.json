@@ -161,7 +161,7 @@
  },
  "updates": {
   "default": {"name": "Par défaut", "description": "Retire les stratégies de mise à jour posées par WindowCraft, remet BITS et wuauserv sur Manuel et UsoSvc sur Automatique, et réactive les tâches planifiées de mise à jour."},
-  "security": {"name": "Sécurité / recommandé", "description": "Exclut les pilotes de Windows Update, reporte les mises à jour de fonctionnalités de 365 jours et les mises à jour qualité de 4 jours, et bloque les redémarrages automatiques tant qu'un utilisateur est connecté."},
+  "security": {"name": "Sécurité / recommandé", "description": "Exclut les pilotes de Windows Update, reporte les mises à jour de fonctionnalités de 365 jours et les mises à jour qualité de 4 jours, bloque les redémarrages tant qu'un utilisateur est connecté, et réactive les mises à jour automatiques, les services de mise à jour et leurs tâches."},
   "disabled": {"name": "Désactiver TOUTES les mises à jour", "description": "Règle NoAutoUpdate=1, arrête et désactive BITS, wuauserv et UsoSvc, vide SoftwareDistribution et désactive toutes les tâches planifiées de mise à jour. Le système ne reçoit plus de correctifs de sécurité."}
  },
  "apps": {

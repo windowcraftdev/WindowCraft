@@ -33,7 +33,7 @@
   {
     "id": "security",
     "name": "Security / Recommended",
-    "description": "Excludes drivers from Windows Update, defers feature updates by 365 days and quality updates by 4 days, and blocks automatic restarts while a user is signed in.",
+    "description": "Excludes drivers from Windows Update, defers feature updates by 365 days and quality updates by 4 days, blocks restarts while a user is signed in, and turns automatic updates, the update services and the update tasks back on.",
     "registry": [
       { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "ExcludeWUDriversInQualityUpdate", "kind": "DWord", "value": "1", "original": "<RemoveEntry>" },
       { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Device Metadata", "name": "PreventDeviceMetadataFromNetwork", "kind": "DWord", "value": "1", "original": "<RemoveEntry>" },
@@ -44,10 +44,22 @@
       { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "DeferQualityUpdatesPeriodInDays", "kind": "DWord", "value": "4", "original": "<RemoveEntry>" },
       { "path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings", "name": "DeferFeatureUpdatesPeriodInDays", "kind": "DWord", "value": "365", "original": "<RemoveEntry>" },
       { "path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings", "name": "DeferQualityUpdatesPeriodInDays", "kind": "DWord", "value": "4", "original": "<RemoveEntry>" },
-      { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "name": "NoAutoRebootWithLoggedOnUsers", "kind": "DWord", "value": "1", "original": "<RemoveEntry>" }
+      { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "name": "NoAutoRebootWithLoggedOnUsers", "kind": "DWord", "value": "1", "original": "<RemoveEntry>" },
+      { "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "name": "NoAutoUpdate", "kind": "DWord", "value": "<RemoveEntry>", "original": "<RemoveEntry>" }
     ],
-    "services": [],
-    "task_folders": []
+    "services": [
+      { "name": "BITS", "startup": "Manual", "original": "Manual", "optional": false },
+      { "name": "wuauserv", "startup": "Manual", "original": "Manual", "optional": false },
+      { "name": "UsoSvc", "startup": "Automatic", "original": "Automatic", "optional": false }
+    ],
+    "task_folders": [
+      { "path": "\\Microsoft\\Windows\\InstallService", "enabled": true },
+      { "path": "\\Microsoft\\Windows\\UpdateOrchestrator", "enabled": true },
+      { "path": "\\Microsoft\\Windows\\UpdateAssistant", "enabled": true },
+      { "path": "\\Microsoft\\Windows\\WaaSMedic", "enabled": true },
+      { "path": "\\Microsoft\\Windows\\WindowsUpdate", "enabled": true },
+      { "path": "\\Microsoft\\WindowsUpdate", "enabled": true }
+    ]
   },
   {
     "id": "disabled",
